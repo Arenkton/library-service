@@ -1,13 +1,44 @@
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import (
+    OpenApiParameter,
+    extend_schema,
+    extend_schema_view,
+)
 from rest_framework import mixins, viewsets
 from rest_framework.permissions import IsAuthenticated
 
 from borrowings.models import Borrowing
 from borrowings.serializers import (
     BorrowingCreateSerializer,
+    BorrowingFilterSerializer,
     BorrowingReadSerializer,
 )
 
 
+@extend_schema_view(
+    list=extend_schema(
+        parameters=[
+            OpenApiParameter(
+                name="is_active",
+                type=OpenApiTypes.BOOL,
+                location=OpenApiParameter.QUERY,
+                description=(
+                    "Filter active (true) or returned "
+                    "(false) borrowings."
+                ),
+            ),
+            OpenApiParameter(
+                name="user_id",
+                type=OpenApiTypes.INT,
+                location=OpenApiParameter.QUERY,
+                description=(
+                    "Filter borrowings by user ID. "
+                    "Only applies to admin users."
+                ),
+            ),
+        ],
+    ),
+)
 class BorrowingViewSet(
     mixins.CreateModelMixin,
     viewsets.ReadOnlyModelViewSet,
@@ -28,10 +59,32 @@ class BorrowingViewSet(
     def get_queryset(self):
         queryset = super().get_queryset()
 
-        if self.request.user.is_staff:
+        if not self.request.user.is_staff:
+            queryset = queryset.filter(
+                user=self.request.user
+            )
+
+        if self.action != "list":
             return queryset
 
-        return queryset.filter(user=self.request.user)
+        filter_serializer = BorrowingFilterSerializer(
+            data=self.request.query_params.dict()
+        )
+        filter_serializer.is_valid(raise_exception=True)
+
+        filters = filter_serializer.validated_data
+
+        if "is_active" in filters:
+            queryset = queryset.filter(
+                actual_return_date__isnull=filters["is_active"]
+            )
+
+        if self.request.user.is_staff and "user_id" in filters:
+            queryset = queryset.filter(
+                user_id=filters["user_id"]
+            )
+
+        return queryset
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)

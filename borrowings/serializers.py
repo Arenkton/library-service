@@ -67,3 +67,11 @@ class BorrowingCreateSerializer(serializers.ModelSerializer):
             )
 
         return borrowing
+
+
+class BorrowingFilterSerializer(serializers.Serializer):
+    is_active = serializers.BooleanField(required=False)
+    user_id = serializers.IntegerField(
+        required=False,
+        min_value=1,
+    )
