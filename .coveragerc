@@ -1,0 +1,14 @@
+[run]
+source =
+    users
+    books
+    borrowings
+omit =
+    */migrations/*
+    */tests/*
+    */admin.py
+    */apps.py
+    */__init__.py
+
+[report]
+show_missing = True
