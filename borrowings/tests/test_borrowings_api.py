@@ -280,26 +280,6 @@ class BorrowingAPITests(APITestCase):
             response.data["actual_return_date"]
         )
 
-    def test_post_is_not_allowed_yet(self):
-        self.authenticate(self.user)
-
-        response = self.client.post(
-            self.list_url,
-            {
-                "book": self.book.id,
-                "expected_return_date": (
-                    timezone.localdate()
-                    + timedelta(days=7)
-                ).isoformat(),
-            },
-            format="json",
-        )
-
-        self.assertEqual(
-            response.status_code,
-            status.HTTP_405_METHOD_NOT_ALLOWED,
-        )
-
     def test_put_is_not_allowed(self):
         self.authenticate(self.admin)
 
