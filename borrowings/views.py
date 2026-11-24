@@ -1,12 +1,20 @@
+from django.db import transaction
+from django.db.models import F
+from django.utils import timezone
+
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import (
     OpenApiParameter,
     extend_schema,
     extend_schema_view,
 )
-from rest_framework import mixins, viewsets
+from rest_framework import mixins, status, viewsets
+from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 
+from books.models import Book
 from borrowings.models import Borrowing
 from borrowings.serializers import (
     BorrowingCreateSerializer,
@@ -88,3 +96,47 @@ class BorrowingViewSet(
 
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
+
+    @extend_schema(
+        request=None,
+        responses={200: BorrowingReadSerializer},
+        description=(
+            "Return an active borrowing and increase "
+            "the book inventory by one."
+        ),
+    )
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="return",
+    )
+    def return_book(self, request, pk=None):
+        borrowing = self.get_object()
+
+        with transaction.atomic():
+            updated = Borrowing.objects.filter(
+                pk=borrowing.pk,
+                actual_return_date__isnull=True,
+            ).update(
+                actual_return_date=timezone.localdate()
+            )
+
+            if updated == 0:
+                raise ValidationError(
+                    {"detail": "This book has already been returned."}
+                )
+
+            Book.objects.filter(
+                pk=borrowing.book_id
+            ).update(
+                inventory=F("inventory") + 1
+            )
+
+        borrowing.refresh_from_db()
+
+        serializer = self.get_serializer(borrowing)
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK,
+        )
