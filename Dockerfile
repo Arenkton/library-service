@@ -18,4 +18,10 @@ RUN poetry install \
 
 COPY . .
 
+RUN groupadd --system app \
+    && useradd --system --gid app --home-dir /app app \
+    && chown -R app:app /app
+
+USER app
+
 EXPOSE 8000

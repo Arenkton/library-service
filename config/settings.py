@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     "users.apps.UsersConfig",
     "books",
     "borrowings",
+    "notifications",
 ]
 
 MIDDLEWARE = [
@@ -190,3 +191,6 @@ CELERY_ENABLE_UTC = True
 CELERY_TASK_IGNORE_RESULT = True
 
 CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
