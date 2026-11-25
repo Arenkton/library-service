@@ -21,6 +21,13 @@ from borrowings.serializers import (
     BorrowingFilterSerializer,
     BorrowingReadSerializer,
 )
+import logging
+
+from kombu.exceptions import OperationalError
+from notifications.tasks import notify_new_borrowing
+
+
+logger = logging.getLogger(__name__)
 
 
 @extend_schema_view(
@@ -95,7 +102,18 @@ class BorrowingViewSet(
         return queryset
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        borrowing = serializer.save(user=self.request.user)
+
+        def enqueue_notification():
+            try:
+                notify_new_borrowing.delay(borrowing.pk)
+            except OperationalError:
+                logger.exception(
+                    "Failed to queue notification for borrowing %s",
+                    borrowing.pk,
+                )
+
+        transaction.on_commit(enqueue_notification)
 
     @extend_schema(
         request=None,

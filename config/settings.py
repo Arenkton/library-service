@@ -15,6 +15,8 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from celery.schedules import crontab
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
@@ -48,6 +50,7 @@ INSTALLED_APPS = [
     "users.apps.UsersConfig",
     "books",
     "borrowings",
+    "notifications",
 ]
 
 MIDDLEWARE = [
@@ -176,3 +179,27 @@ SIMPLE_JWT = {
     "AUTH_HEADER_TYPES": ("Bearer",),
     "AUTH_HEADER_NAME": "HTTP_AUTHORIZE",
 }
+
+# Celery configuration
+
+CELERY_BROKER_URL = os.getenv(
+    "CELERY_BROKER_URL",
+    "redis://localhost:6379/0",
+)
+
+CELERY_BEAT_SCHEDULE = {
+    "check-overdue-borrowings-daily": {
+        "task": "notifications.tasks.notify_overdue_borrowings",
+        "schedule": crontab(hour=9, minute=0),
+    },
+}
+
+CELERY_TIMEZONE = TIME_ZONE
+CELERY_ENABLE_UTC = True
+
+CELERY_TASK_IGNORE_RESULT = True
+
+CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
+
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")

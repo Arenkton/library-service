@@ -1,3 +1,24 @@
+x-django-service: &django-service
+  build: .
+  volumes:
+    - .:/app
+  env_file:
+    - .env
+  environment:
+    DJANGO_DEBUG: "True"
+    DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1"
+    POSTGRES_HOST: db
+    POSTGRES_DB: library
+    POSTGRES_USER: library
+    POSTGRES_PASSWORD: library_dev_password
+    POSTGRES_PORT: "5432"
+    CELERY_BROKER_URL: redis://redis:6379/0
+  depends_on:
+    db:
+      condition: service_healthy
+    redis:
+      condition: service_started
+
 services:
   db:
     image: postgres:17-alpine
@@ -17,30 +38,26 @@ services:
     image: redis:7-alpine
 
   web:
-    build: .
+    <<: *django-service
     command: >
       sh -c "python manage.py migrate &&
              python manage.py runserver 0.0.0.0:8000"
-    volumes:
-      - .:/app
     ports:
       - "8001:8000"
-    env_file:
-      - .env
-    environment:
-      DJANGO_DEBUG: "True"
-      DJANGO_ALLOWED_HOSTS: "localhost,127.0.0.1"
-      POSTGRES_HOST: db
-      POSTGRES_DB: library
-      POSTGRES_USER: library
-      POSTGRES_PASSWORD: library_dev_password
-      POSTGRES_PORT: "5432"
-      CELERY_BROKER_URL: redis://redis:6379/0
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_started
+
+  worker:
+    <<: *django-service
+    command: >
+      celery -A config worker
+      --loglevel=info
+      --concurrency=2
+
+  beat:
+    <<: *django-service
+    command: >
+      celery -A config beat
+      --loglevel=info
+      --schedule=/tmp/celerybeat-schedule
 
 volumes:
   postgres_data:
