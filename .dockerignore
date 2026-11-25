@@ -1,0 +1,12 @@
+.git
+.idea
+.venv
+.env
+__pycache__
+*.pyc
+.pytest_cache
+.coverage
+.coverage.*
+htmlcov
+db.sqlite3
+*.log
