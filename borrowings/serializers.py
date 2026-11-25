@@ -7,11 +7,16 @@ from rest_framework import serializers
 from books.models import Book
 from books.serializers import BookSerializer
 from borrowings.models import Borrowing
+from payments.serializers import PaymentSerializer
 
 
 class BorrowingReadSerializer(serializers.ModelSerializer):
     book = BookSerializer(read_only=True)
     is_active = serializers.BooleanField(read_only=True)
+    payments = PaymentSerializer(
+        many=True,
+        read_only=True,
+    )
 
     class Meta:
         model = Borrowing
@@ -23,6 +28,7 @@ class BorrowingReadSerializer(serializers.ModelSerializer):
             "book",
             "user",
             "is_active",
+            "payments",
         )
         read_only_fields = fields
 
@@ -67,6 +73,12 @@ class BorrowingCreateSerializer(serializers.ModelSerializer):
             )
 
         return borrowing
+
+    def to_representation(self, instance):
+        return BorrowingReadSerializer(
+            instance,
+            context=self.context,
+        ).data
 
 
 class BorrowingFilterSerializer(serializers.Serializer):

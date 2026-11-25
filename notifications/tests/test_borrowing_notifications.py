@@ -35,11 +35,22 @@ class BorrowingNotificationTests(APITestCase):
         )
 
     def setUp(self):
-        token = RefreshToken.for_user(self.user).access_token
+        token = RefreshToken.for_user(
+            self.user
+        ).access_token
+
         self.client.credentials(
             HTTP_AUTHORIZE=f"Bearer {token}"
         )
+
         self.url = reverse("borrowing-list")
+
+        payment_patcher = patch(
+            "borrowings.views.create_payment_for_borrowing"
+        )
+
+        self.mock_create_payment = payment_patcher.start()
+        self.addCleanup(payment_patcher.stop)
 
     @patch("borrowings.views.notify_new_borrowing.delay")
     def test_successful_borrowing_queues_notification(

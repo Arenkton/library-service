@@ -10,7 +10,7 @@ from drf_spectacular.utils import (
 )
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import ValidationError, APIException
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
@@ -21,13 +21,24 @@ from borrowings.serializers import (
     BorrowingFilterSerializer,
     BorrowingReadSerializer,
 )
+from payments.services import create_payment_for_borrowing
 import logging
 
 from kombu.exceptions import OperationalError
 from notifications.tasks import notify_new_borrowing
+from stripe import StripeError
 
 
 logger = logging.getLogger(__name__)
+
+
+class PaymentServiceUnavailable(APIException):
+    status_code = 503
+    default_detail = (
+        "Payment service is temporarily unavailable. "
+        "Please try again later."
+    )
+    default_code = "payment_service_unavailable"
 
 
 @extend_schema_view(
@@ -58,9 +69,10 @@ class BorrowingViewSet(
     mixins.CreateModelMixin,
     viewsets.ReadOnlyModelViewSet,
 ):
-    queryset = Borrowing.objects.select_related(
-        "book",
-        "user",
+    queryset = (
+        Borrowing.objects
+        .select_related("book", "user")
+        .prefetch_related("payments")
     )
     serializer_class = BorrowingReadSerializer
     permission_classes = (IsAuthenticated,)
@@ -102,18 +114,36 @@ class BorrowingViewSet(
         return queryset
 
     def perform_create(self, serializer):
-        borrowing = serializer.save(user=self.request.user)
+        with transaction.atomic():
+            borrowing = serializer.save(
+                user=self.request.user
+            )
 
-        def enqueue_notification():
             try:
-                notify_new_borrowing.delay(borrowing.pk)
-            except OperationalError:
+                create_payment_for_borrowing(borrowing)
+            except StripeError as exc:
                 logger.exception(
-                    "Failed to queue notification for borrowing %s",
+                    "Failed to create Stripe payment "
+                    "for borrowing %s",
                     borrowing.pk,
                 )
+                raise PaymentServiceUnavailable() from exc
 
-        transaction.on_commit(enqueue_notification)
+            def enqueue_notification():
+                try:
+                    notify_new_borrowing.delay(
+                        borrowing.pk
+                    )
+                except OperationalError:
+                    logger.exception(
+                        "Failed to queue notification "
+                        "for borrowing %s",
+                        borrowing.pk,
+                    )
+
+            transaction.on_commit(
+                enqueue_notification
+            )
 
     @extend_schema(
         request=None,
