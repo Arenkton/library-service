@@ -17,6 +17,8 @@ from dotenv import load_dotenv
 
 from celery.schedules import crontab
 
+from decimal import Decimal
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 load_dotenv(BASE_DIR / ".env")
@@ -193,6 +195,10 @@ CELERY_BEAT_SCHEDULE = {
         "task": "notifications.tasks.notify_overdue_borrowings",
         "schedule": crontab(hour=9, minute=0),
     },
+    "recover-missing-fines-hourly": {
+        "task": "payments.tasks.enqueue_missing_fines",
+        "schedule": crontab(minute=0),
+    },
 }
 
 CELERY_TIMEZONE = TIME_ZONE
@@ -221,4 +227,8 @@ STRIPE_CANCEL_URL = os.getenv(
 STRIPE_WEBHOOK_SECRET = os.getenv(
     "STRIPE_WEBHOOK_SECRET",
     "",
+)
+
+FINE_MULTIPLIER = Decimal(
+    os.getenv("FINE_MULTIPLIER", "2")
 )

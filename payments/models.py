@@ -50,3 +50,12 @@ class Payment(models.Model):
             f"Payment #{self.pk} - "
             f"{self.type} - {self.status}"
         )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["borrowing"],
+                condition=models.Q(type="FINE"),
+                name="unique_fine_per_borrowing",
+            ),
+        ]

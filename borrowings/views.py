@@ -22,6 +22,7 @@ from borrowings.serializers import (
     BorrowingReadSerializer,
 )
 from payments.services import create_payment_for_borrowing
+from payments.tasks import create_fine_for_returned_borrowing
 import logging
 
 from kombu.exceptions import OperationalError
@@ -160,25 +161,40 @@ class BorrowingViewSet(
     )
     def return_book(self, request, pk=None):
         borrowing = self.get_object()
+        returned_on = timezone.localdate()
 
         with transaction.atomic():
             updated = Borrowing.objects.filter(
                 pk=borrowing.pk,
                 actual_return_date__isnull=True,
             ).update(
-                actual_return_date=timezone.localdate()
+                actual_return_date=returned_on
             )
 
             if updated == 0:
-                raise ValidationError(
-                    {"detail": "This book has already been returned."}
-                )
+                raise ValidationError({
+                    "detail": "This book has already been returned."
+                })
 
             Book.objects.filter(
                 pk=borrowing.book_id
             ).update(
                 inventory=F("inventory") + 1
             )
+
+            if returned_on > borrowing.expected_return_date:
+                def enqueue_fine():
+                    try:
+                        create_fine_for_returned_borrowing.delay(
+                            borrowing.pk
+                        )
+                    except OperationalError:
+                        logger.exception(
+                            "Failed to queue fine for borrowing %s",
+                            borrowing.pk,
+                        )
+
+                transaction.on_commit(enqueue_fine)
 
         borrowing.refresh_from_db()
 
