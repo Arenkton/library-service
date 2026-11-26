@@ -52,6 +52,24 @@ class CreateBorrowingAPITests(APITestCase):
             "expected_return_date": self.return_date.isoformat(),
         }
 
+        stripe_patcher = patch(
+            "payments.services.StripeClient"
+        )
+        mock_stripe_client = stripe_patcher.start()
+        self.addCleanup(stripe_patcher.stop)
+
+        self.mock_stripe_create = (
+            mock_stripe_client.return_value
+            .v1.checkout.sessions.create
+        )
+
+        self.mock_stripe_create.return_value.id = (
+            "cs_test_create_borrowing"
+        )
+        self.mock_stripe_create.return_value.url = (
+            "https://checkout.stripe.com/test-borrowing"
+        )
+
     def authenticate(self, user):
         token = RefreshToken.for_user(user).access_token
         self.client.credentials(
