@@ -1,7 +1,11 @@
+import logging
+
 from decimal import Decimal
 
 from django.conf import settings
 from django.shortcuts import get_object_or_404
+from django.db import transaction
+from kombu.exceptions import OperationalError
 
 from stripe import StripeClient, StripeError
 
@@ -14,6 +18,10 @@ from rest_framework.permissions import IsAuthenticated
 
 from payments.models import Payment
 from payments.serializers import PaymentSerializer
+from notifications.tasks import notify_successful_payment
+
+
+logger = logging.getLogger(__name__)
 
 
 class PaymentViewSet(viewsets.ReadOnlyModelViewSet):
@@ -100,12 +108,22 @@ class PaymentSuccessView(APIView):
                 "status": payment.status,
             })
 
-        Payment.objects.filter(
+        updated = Payment.objects.filter(
             pk=payment.pk,
             status=Payment.Status.PENDING,
-        ).update(
-            status=Payment.Status.PAID
-        )
+        ).update(status=Payment.Status.PAID)
+
+        if updated:
+            def enqueue_notification():
+                try:
+                    notify_successful_payment.delay(payment.pk)
+                except OperationalError:
+                    logger.exception(
+                        "Failed to queue payment notification for %s",
+                        payment.pk,
+                    )
+
+            transaction.on_commit(enqueue_notification)
 
         return Response({
             "message": "Payment confirmed successfully.",

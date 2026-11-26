@@ -4,6 +4,8 @@ from decimal import Decimal
 import stripe
 
 from django.conf import settings
+from django.db import transaction
+from kombu.exceptions import OperationalError
 
 from rest_framework import status
 from rest_framework.permissions import AllowAny
@@ -11,6 +13,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from payments.models import Payment
+from notifications.tasks import notify_successful_payment
 
 
 logger = logging.getLogger(__name__)
@@ -102,14 +105,23 @@ class StripeWebhookView(APIView):
         updated = Payment.objects.filter(
             pk=payment.pk,
             status=Payment.Status.PENDING,
-        ).update(
-            status=Payment.Status.PAID,
-        )
+        ).update(status=Payment.Status.PAID)
 
         if updated:
             logger.info(
                 "Payment %s confirmed by Stripe webhook.",
                 payment.pk,
             )
+
+            def enqueue_notification():
+                try:
+                    notify_successful_payment.delay(payment.pk)
+                except OperationalError:
+                    logger.exception(
+                        "Failed to queue payment notification for %s",
+                        payment.pk,
+                    )
+
+            transaction.on_commit(enqueue_notification)
 
         return Response({"status": "success"})
