@@ -47,9 +47,11 @@ class BorrowingSerializerTests(TestCase):
             "book",
             "user",
             "is_active",
+            "payments",
         }
 
         self.assertEqual(set(data.keys()), expected_fields)
+        self.assertEqual(data["payments"], [])
 
     def test_book_is_nested_object(self):
         data = BorrowingReadSerializer(self.borrowing).data

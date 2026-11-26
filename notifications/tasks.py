@@ -6,6 +6,7 @@ from notifications.telegram import (
     send_telegram_message,
 )
 from notifications.services import get_overdue_borrowings
+from payments.models import Payment
 
 
 @shared_task(
@@ -69,3 +70,41 @@ def notify_overdue_borrowings() -> int:
         )
 
     return notifications_sent
+
+
+@shared_task(
+    autoretry_for=(TelegramTemporaryError,),
+    retry_backoff=True,
+    retry_jitter=True,
+    retry_kwargs={"max_retries": 3},
+)
+def notify_successful_payment(payment_id: int) -> bool:
+    payment = (
+        Payment.objects
+        .select_related(
+            "borrowing__book",
+            "borrowing__user",
+        )
+        .filter(pk=payment_id)
+        .first()
+    )
+
+    if payment is None:
+        return False
+
+    if payment.status != Payment.Status.PAID:
+        return False
+
+    borrowing = payment.borrowing
+
+    message = (
+        "✅ Payment received!\n\n"
+        f"Payment ID: {payment.pk}\n"
+        f"Type: {payment.get_type_display()}\n"
+        f"Borrowing ID: {borrowing.pk}\n"
+        f"Book: {borrowing.book.title}\n"
+        f"User ID: {borrowing.user_id}\n"
+        f"Amount: ${payment.money_to_pay}"
+    )
+
+    return send_telegram_message(message)
